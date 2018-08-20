@@ -68,14 +68,14 @@ for i in range(18):
         cx = int(M['m10'] / M['m00'])
         cy = int(M['m01'] / M['m00'])
 
-        centroids_in_a_section.append( "(" + ",".join( [ str(x) for x in [cx/1000.0,cy/1000.0,(i/1000.0)*40.3] ] )+")")
+        centroids_in_a_section.append( [ cx+x_correction, cy+y_correction, (i-9)*40.3 ] )
         verts = []
         for v in simp_cont:
             verts.append( "(" + ",".join( [ str( coord ) for coord in v ] ) + ")" )
         #contour_list.append(  "[" + ",\n".join( verts ) + "]" )
         j += 1
 
-    all_centroids.append( "[" + ",".join( centroids_in_a_section ) + "]" )
+    all_centroids.append( centroids_in_a_section )
     all_contours.append( contours_in_a_section )
 
 #convert contours into vertices
@@ -93,10 +93,23 @@ for contours_in_a_section in all_contours:
         contour_str_list.append( contour_str )
     contours_in_a_section_str = "[" + ",\n".join( contour_str_list ) + "]"
     all_contours_str_list.append( contours_in_a_section_str )
-ret_str += "contour_list=["
-ret_str += ",\n".join( all_contours_str_list )
-ret_str += "]\n"
+ret_str += "contour_list=[" + ",\n".join( all_contours_str_list ) + "]\n"
 #ret_str += "centroids=[" + ",\n".join(centroids)+"]\n"
+
+#convert centroids into vertices
+all_centroids_str_list = []
+
+for centroids_in_a_section in all_centroids:
+    centroids_str_list = []
+    centroids_in_a_section_str = ""
+    for centroid in centroids_in_a_section:
+        centroid_str = "(" + ",".join( [ str(x/1000.0) for x in centroid ] )+")"
+        print( centroid_str )
+        centroids_str_list.append( centroid_str )
+    centroids_in_a_section_str = "[" + ",\n".join( centroids_str_list ) + "]"
+    all_centroids_str_list.append( centroids_in_a_section_str  )
+ret_str += "centroid_list=[" + ",".join(all_centroids_str_list) + "]\n"
+
 
 ret_str += """
 import bpy
@@ -595,15 +608,15 @@ contour_pair_list = [
 [[14,20],[15,13]],
 [[14,23],[15,15]],
 [[14,26],[15,16]],
-[[14, 1],[15, 1]],
-[[14, 2],[15, 3]],
-[[14, 5],[15, 4]],
-[[14, 8],[15, 7]],
-[[14,11],[15, 9]],
-[[14,14],[15,10]],
-[[14,16],[15,12]],
-[[14,18],[15,14]],
-[[14,22],[15,16]],
+[[14, 2],[15, 1]],
+[[14, 5],[15, 3]],
+[[14, 8],[15, 4]],
+[[14,11],[15, 7]],
+[[14,14],[15, 9]],
+[[14,16],[15,10]],
+[[14,18],[15,12]],
+[[14,22],[15,14]],
+[[14,25],[15,16]],
 [[15, 0],[16, 0]],
 [[15, 2],[16, 3]],
 [[15, 5],[16, 5]],
@@ -658,12 +671,14 @@ for contours_in_a_section in contour_list:
 
     contour_index = 0
     for contour in contours_in_a_section:
-        contour_model = { 'index':[section_index+1,contour_index],'v':[], 'e':[], 'bottom':True, 'top':True, 'above':[], 'below':[], 'coords':[], 'branching_processed': False }
+        contour_model = { 'index':[section_index+1,contour_index],'v':[], 'e':[], 'bottom':True, 'top':True, 'above':[], 'below':[], 'coords':[], 'branching_processed': False, 'centroid':[], 'contour_length':-1 }
+        contour_model['contour_length'] = len( contour )
         for v in contour:
             contour_model['v'].append( bm.verts.new(v) )
             contour_model['coords'].append( v )
         for i in range( len( contour_model['v'] ) ):
             contour_model['e'].append( bm.edges.new( ( contour_model['v'][i],contour_model['v'][(i+1)%len(contour_model['v'])] ) ) )
+        contour_model['centroid'] = centroid_list[section_index][contour_index]
         contour_model_in_a_section.append( contour_model )
         contour_index += 1
     all_contour_model.append( contour_model_in_a_section )
@@ -686,8 +701,53 @@ for contour_model_in_a_section in all_contour_model:
         if len( contour_model['below'] ) == 0:
             face1 = bm.faces.new( tuple( contour_model['v'] ) )
         elif len( contour_model['above'] ) == 0:
-            face1 = bm.faces.new( tuple( reversed( contour_model['v'] ) ) )
+            #face1 = bm.faces.new( tuple( reversed( contour_model['v'] ) ) )
+        #elif False:
+            below_centroid = []
+            below_left = []
+            below_right = []
+            #print( contour_model['index'] )
+            left_idx = 0
+            right_idx = int(contour_model['contour_length']/2)
+            #print( left_idx, right_idx )
+
+            if len( contour_model['below'] ) == 2:
+                below1 = contour_model['below'][0]
+                below2 = contour_model['below'][1]
+                if below1['coords'][0][0] > below2['coords'][0][0] :
+                    temp = below2
+                    below2 = below1
+                    below1 = temp
+                below_centroid = list( below1['centroid'] ).copy()
+                for i in range(2):
+                    below_centroid[i] = ( below1['centroid'][i] + below2['centroid'][i] ) / 2
+                below_left = below1['coords'][0]
+                below_right = below2['coords'][int(below2['contour_length']/2)]
+            elif len( contour_model['below'] ) == 1:
+                below_centroid = list( contour_model['below'][0]['centroid'] ).copy()
+                below_left = contour_model['below'][0]['coords'][0]
+                below_right = contour_model['below'][0]['coords'][int(contour_model['below'][0]['contour_length']/2)]
+            delta_centroid = [ contour_model['centroid'][x] - below_centroid[x] for x in range(3) ]
+            delta_left = [ contour_model['coords'][0][x] - below_left[x] for x in range(3) ]
+            delta_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] - below_right[x] for x in range(3) ]
             
+            new_centroid = [ contour_model['centroid'][x] + delta_centroid[x] for x in range(3) ] 
+            new_left = [ contour_model['coords'][0][x] + delta_left[x] for x in range(3) ] 
+            new_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] + delta_right[x] for x in range(3) ]
+
+            #print( below_centroid, below_left, below_right )
+            #print( contour_model['centroid'], contour_model['coords'][0], contour_model['coords'][int(contour_model['contour_length']/2)] )
+            #print( delta_centroid, delta_left, delta_right )
+            #print( new_centroid, new_left, new_right )
+
+            v_centroid = bm.verts.new(new_centroid)
+            #v_left = bm.verts.new(new_left) 
+            #v_right =  bm.verts.new(new_right) 
+            #contour_model['e'].append( bm.edges.new( ( v_left, v_centroid ) ) )
+            #contour_model['e'].append( bm.edges.new( ( v_right, v_centroid ) ) )
+            for i in range( contour_model['contour_length'] ):
+                face1 = bm.faces.new( ( contour_model['v'][i], contour_model['v'][(i+1)%contour_model['contour_length']], v_centroid ) )
+                        
 
 # create faces
 for contour_pair in contour_pair_list:
@@ -713,7 +773,7 @@ for contour_pair in contour_pair_list:
                 temp = above2
                 above2 = above1
                 above1 = temp
-            print( contour1['index'], above1['index'] )
+            #print( contour1['index'], above1['index'] )
             quarter_length = int( len( contour1['v'] ) / 4 )
             for i in range( quarter_length ):
                 idx1 = i 
@@ -763,7 +823,7 @@ for contour_pair in contour_pair_list:
                 temp = below2
                 below2 = below1
                 below1 = temp
-            print( contour2['index'], below1['index'], below2['index'] )
+            #print( contour2['index'], below1['index'], below2['index'] )
             quarter_length = int( len( contour1['v'] ) / 4 )
             for i in range( quarter_length ):
                 idx1 = i 
@@ -771,7 +831,7 @@ for contour_pair in contour_pair_list:
                 idx3 = idx1*2
                 idx4 = idx1*2+1
                 idx5 = idx1*2+2
-                print( "1", idx1, idx2, idx3, idx4 )
+                #print( "1", idx1, idx2, idx3, idx4 )
                 face1 = bm.faces.new( ( contour2['v'][idx2], contour2['v'][idx1], below1['v'][idx3], below1['v'][idx4] ) )
                 face1 = bm.faces.new( ( contour2['v'][idx2], below1['v'][idx4], below1['v'][idx5] ) )
             for i in range( quarter_length) :
@@ -780,7 +840,7 @@ for contour_pair in contour_pair_list:
                 idx3 = i*2
                 idx4 = i*2+1
                 idx5 = i*2+2
-                print( "2", idx1, idx2, idx3, idx4, idx5 )
+                #print( "2", idx1, idx2, idx3, idx4, idx5 )
                 face1 = bm.faces.new( ( contour2['v'][idx2], contour2['v'][idx1], below2['v'][idx3], below2['v'][idx4] ) )
                 face1 = bm.faces.new( ( contour2['v'][idx2], below2['v'][idx4], below2['v'][idx5] ) )
             for i in range( quarter_length) :
@@ -789,7 +849,7 @@ for contour_pair in contour_pair_list:
                 idx3 = ( quarter_length*2 +(i*2) ) % len( contour1['v'] )
                 idx4 = ( quarter_length*2 +(i*2)+1 )% len( contour1['v'] )
                 idx5 = ( quarter_length*2 +(i*2)+2 ) % len( contour1['v'] ) 
-                print( "3", idx1, idx2, idx3, idx4, idx5 )
+                #print( "3", idx1, idx2, idx3, idx4, idx5 )
                 face1 = bm.faces.new( ( contour2['v'][idx2], contour2['v'][idx1], below2['v'][idx3], below2['v'][idx4] ) )
                 face1 = bm.faces.new( ( contour2['v'][idx2], below2['v'][idx4], below2['v'][idx5] ) )
             for i in range( quarter_length) :
@@ -798,14 +858,14 @@ for contour_pair in contour_pair_list:
                 idx3 = ( quarter_length*2 +(i*2) ) % len( contour1['v'] )
                 idx4 = ( quarter_length*2 +(i*2)+1 )% len( contour1['v'] )
                 idx5 = ( quarter_length*2 +(i*2)+2 ) % len( contour1['v'] ) 
-                print( "4", idx1, idx2, idx3, idx4, idx5 )
+                #print( "4", idx1, idx2, idx3, idx4, idx5 )
                 face1 = bm.faces.new( ( contour2['v'][idx2], contour2['v'][idx1], below1['v'][idx3], below1['v'][idx4] ) )
                 face1 = bm.faces.new( ( contour2['v'][idx2], below1['v'][idx4], below1['v'][idx5] ) )
             idx1 = quarter_length
             idx2 = quarter_length * 3
             idx3 = quarter_length * 2
             idx4 = 0
-            print( idx1, idx2, idx3, idx4 )
+            #print( idx1, idx2, idx3, idx4 )
             face1 = bm.faces.new( ( contour2['v'][idx2], contour2['v'][idx1], below1['v'][idx3] ) )
             face1 = bm.faces.new( ( contour2['v'][idx1], contour2['v'][idx2], below2['v'][0] ) )
         contour2['branching_processed'] = True
