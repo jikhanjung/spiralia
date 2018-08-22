@@ -1050,6 +1050,7 @@ centroid_list=[[(0.339,0.019,-0.36269999999999997)],[(0.323,0.083,-0.32239999999
 
 import bpy
 import bmesh
+import math
 #import contour_pair_list
 
 mesh = bpy.data.meshes.new("mesh")  # add a new mesh
@@ -1607,7 +1608,7 @@ for contours_in_a_section in contour_list:
 
     contour_index = 0
     for contour in contours_in_a_section:
-        contour_model = { 'index':[section_index+1,contour_index],'v':[], 'e':[], 'bottom':True, 'top':True, 'above':[], 'below':[], 'coords':[], 'branching_processed': False, 'centroid':[], 'contour_length':-1 }
+        contour_model = { 'index':[section_index+1,contour_index],'v':[], 'e':[], 'bottom':True, 'top':True, 'above':[], 'below':[], 'coords':[], 'branching_processed': False, 'centroid':[], 'contour_length':-1, 'fused_top':False, 'fused_bottom': False }
         contour_model['contour_length'] = len( contour )
         for v in contour:
             contour_model['v'].append( bm.verts.new(v) )
@@ -1631,58 +1632,178 @@ for contour_pair in contour_pair_list:
     contour2['below'].append( contour1 )
     print( contour1['index'], contour2['index'] )
 
+# check if fused
+for contours_in_a_section in all_contour_model:
+    for contour in contours_in_a_section:
+        if len( contour['below'] ) == 2: 
+            contour['fused_top'] = True
+            print( "fused when checked from below 1", contour['index'], [ c['index'] for c in contour['below'] ] )
+        if len( contour['below'] ) == 1 and contour['below'][0]['fused_top'] == True: 
+            contour['fused_top'] = True
+            print( "fused when checked from below 2", contour['index'], [ c['index'] for c in contour['below'] ] )
+        if len( contour['above'] ) == 2:
+            contour['fused_bottom'] = True
+            print( "fused when checked from above 1", contour['index'], [ c['index'] for c in contour['above'] ] )
+            temp = contour
+            while len( temp['below'] ) == 1:
+                temp = temp['below'][0]
+                temp['fused_bottom'] = True
+                print( "fused when checked from above 2", temp['index'], [ c['index'] for c in contour['above'] ] )
+        
+        #print( contour1['index'], contour2['index'] )
+
+def get_distance( coord1, coord2 ):
+    x_diff = coord1[0] - coord2[0]
+    y_diff = coord1[1] - coord2[1]
+    z_diff = coord1[2] - coord2[2]
+    sum_diff_squared = x_diff*x_diff + y_diff*y_diff + z_diff*z_diff
+    distance = math.sqrt(sum_diff_squared)  
+    return distance
+    
+SPIRALIA_RADIUS = 0.6
+
 # close top and bottom
 for contour_model_in_a_section in all_contour_model:
     for contour_model in contour_model_in_a_section:
         if len( contour_model['below'] ) == 0:
-            face1 = bm.faces.new( tuple( contour_model['v'] ) )
+            if contour_model['fused_bottom'] == False:
+                face1 = bm.faces.new( tuple( contour_model['v'] ) )
+                print( "not fused", contour_model['index'], [ x['index'] for x in contour_model['above'] ] )
+            else:
+                print( "fused bottom", contour_model['index'], [ x['index'] for x in contour_model['above'] ] )
+                above_centroid = [0,0,0]
+                above_left = [0,0,0]
+                above_right = [0,0,0]
+                #print( contour_model['index'] )
+                left_idx = 0
+                right_idx = int(contour_model['contour_length']/2)
+                #print( left_idx, right_idx )
+    
+                if len( contour_model['above'] ) == 2:
+                    above1 = contour_model['above'][0]
+                    above2 = contour_model['above'][1]
+                    if above1['coords'][0][0] > above2['coords'][0][0] :
+                        temp = above2
+                        above2 = above1
+                        above1 = temp
+                    above_centroid = list( above1['centroid'] ).copy()
+                    for i in range(3):
+                        above_centroid[i] = ( above1['centroid'][i] + above2['centroid'][i] ) / 2
+                    above_left = above1['coords'][0]
+                    above_right = above2['coords'][int(above2['contour_length']/2)]
+                else:
+                    above_centroid = contour_model['above'][0]['centroid']
+                #print( "top cover", contour_model['index'] )
+                #print( "current centroid, below centroid", contour_model['centroid'], below_centroid )
+                
+                curr_left = contour_model['coords'][0]
+                curr_centroid = contour_model['centroid']
+                curr_right = contour_model['coords'][int(contour_model['contour_length']/2)]
+                
+                left_dist = get_distance( curr_left, curr_centroid )
+                right_dist = get_distance( curr_right, curr_centroid )
+                mean_dist = ( left_dist + right_dist ) / 2
+                #print( "left, right, mean dist", left_dist, right_dist, mean_dist )
+                sin_theta = mean_dist / SPIRALIA_RADIUS
+                theta = math.asin( sin_theta )
+                z_diff = SPIRALIA_RADIUS - SPIRALIA_RADIUS * math.cos( theta )
+                #print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
+                
+                delta_centroid = []
+                for k in range(3):
+                    delta_centroid.append( ( contour_model['centroid'][k] - above_centroid[k] ) * (z_diff / (40.3/1000)) )
+                #delta_centroid = [ contour_model['centroid'][x] - above_centroid[x] for x in range(3) ]
+                #delta_centroid[2] = z_diff
+                
+                #delta_left = [ contour_model['coords'][0][x] - below_left[x] for x in range(3) ]
+                #delta_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] - below_right[x] for x in range(3) ]
+                
+                new_centroid = [ contour_model['centroid'][x] + delta_centroid[x] for x in range(3) ] 
+                #new_left = [ contour_model['coords'][0][x] + delta_left[x] for x in range(3) ] 
+                #new_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] + delta_right[x] for x in range(3) ]
+    
+                #print( below_centroid, below_left, below_right )
+                #print( contour_model['centroid'], contour_model['coords'][0], contour_model['coords'][int(contour_model['contour_length']/2)] )
+                #print( delta_centroid, delta_left, delta_right )
+                #print( new_centroid, new_left, new_right )
+    
+                v_centroid = bm.verts.new(new_centroid)
+                #v_left = bm.verts.new(new_left) 
+                #v_right =  bm.verts.new(new_right) 
+                #contour_model['e'].append( bm.edges.new( ( v_left, v_centroid ) ) )
+                #contour_model['e'].append( bm.edges.new( ( v_right, v_centroid ) ) )
+                for i in range( contour_model['contour_length'] ):
+                    face1 = bm.faces.new( ( contour_model['v'][i], v_centroid, contour_model['v'][(i+1)%contour_model['contour_length']] ) )
+
         elif len( contour_model['above'] ) == 0:
-            #face1 = bm.faces.new( tuple( reversed( contour_model['v'] ) ) )
-        #elif False:
-            below_centroid = []
-            below_left = []
-            below_right = []
-            #print( contour_model['index'] )
-            left_idx = 0
-            right_idx = int(contour_model['contour_length']/2)
-            #print( left_idx, right_idx )
-
-            if len( contour_model['below'] ) == 2:
-                below1 = contour_model['below'][0]
-                below2 = contour_model['below'][1]
-                if below1['coords'][0][0] > below2['coords'][0][0] :
-                    temp = below2
-                    below2 = below1
-                    below1 = temp
-                below_centroid = list( below1['centroid'] ).copy()
-                for i in range(2):
-                    below_centroid[i] = ( below1['centroid'][i] + below2['centroid'][i] ) / 2
-                below_left = below1['coords'][0]
-                below_right = below2['coords'][int(below2['contour_length']/2)]
-            elif len( contour_model['below'] ) == 1:
-                below_centroid = list( contour_model['below'][0]['centroid'] ).copy()
-                below_left = contour_model['below'][0]['coords'][0]
-                below_right = contour_model['below'][0]['coords'][int(contour_model['below'][0]['contour_length']/2)]
-            delta_centroid = [ contour_model['centroid'][x] - below_centroid[x] for x in range(3) ]
-            delta_left = [ contour_model['coords'][0][x] - below_left[x] for x in range(3) ]
-            delta_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] - below_right[x] for x in range(3) ]
-            
-            new_centroid = [ contour_model['centroid'][x] + delta_centroid[x] for x in range(3) ] 
-            new_left = [ contour_model['coords'][0][x] + delta_left[x] for x in range(3) ] 
-            new_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] + delta_right[x] for x in range(3) ]
-
-            #print( below_centroid, below_left, below_right )
-            #print( contour_model['centroid'], contour_model['coords'][0], contour_model['coords'][int(contour_model['contour_length']/2)] )
-            #print( delta_centroid, delta_left, delta_right )
-            #print( new_centroid, new_left, new_right )
-
-            v_centroid = bm.verts.new(new_centroid)
-            #v_left = bm.verts.new(new_left) 
-            #v_right =  bm.verts.new(new_right) 
-            #contour_model['e'].append( bm.edges.new( ( v_left, v_centroid ) ) )
-            #contour_model['e'].append( bm.edges.new( ( v_right, v_centroid ) ) )
-            for i in range( contour_model['contour_length'] ):
-                face1 = bm.faces.new( ( contour_model['v'][i], contour_model['v'][(i+1)%contour_model['contour_length']], v_centroid ) )
+            if contour_model['fused_top'] == False:
+                face1 = bm.faces.new( tuple( reversed( contour_model['v'] ) ) )
+                #print( "not fused", contour_model['index'], [ x['index'] for x in contour_model['below'] ] )
+            else:
+                #print( "fused", contour_model['index'], [ x['index'] for x in contour_model['below'] ] )
+                below_centroid = [0,0,0]
+                below_left = [0,0,0]
+                below_right = [0,0,0]
+                #print( contour_model['index'] )
+                left_idx = 0
+                right_idx = int(contour_model['contour_length']/2)
+                #print( left_idx, right_idx )
+    
+                if len( contour_model['below'] ) == 2:
+                    below1 = contour_model['below'][0]
+                    below2 = contour_model['below'][1]
+                    if below1['coords'][0][0] > below2['coords'][0][0] :
+                        temp = below2
+                        below2 = below1
+                        below1 = temp
+                    below_centroid = list( below1['centroid'] ).copy()
+                    for i in range(3):
+                        below_centroid[i] = ( below1['centroid'][i] + below2['centroid'][i] ) / 2
+                    below_left = below1['coords'][0]
+                    below_right = below2['coords'][int(below2['contour_length']/2)]
+                else:
+                    below_centroid = contour_model['below'][0]['centroid']
+                #print( "top cover", contour_model['index'] )
+                #print( "current centroid, below centroid", contour_model['centroid'], below_centroid )
+                
+                curr_left = contour_model['coords'][0]
+                curr_centroid = contour_model['centroid']
+                curr_right = contour_model['coords'][int(contour_model['contour_length']/2)]
+                
+                left_dist = get_distance( curr_left, curr_centroid )
+                right_dist = get_distance( curr_right, curr_centroid )
+                mean_dist = ( left_dist + right_dist ) / 2
+                #print( "left, right, mean dist", left_dist, right_dist, mean_dist )
+                sin_theta = mean_dist / SPIRALIA_RADIUS
+                theta = math.asin( sin_theta )
+                z_diff = SPIRALIA_RADIUS - SPIRALIA_RADIUS * math.cos( theta )
+                #print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
+                
+                delta_centroid = []
+                for k in range(3):
+                    delta_centroid.append( ( contour_model['centroid'][k] - below_centroid[k] ) * (z_diff / (40.3/1000)) )
+                #delta_centroid = [ contour_model['centroid'][x] - below_centroid[x] for x in range(3) ]
+                #delta_centroid[2] = z_diff
+                
+                #delta_left = [ contour_model['coords'][0][x] - below_left[x] for x in range(3) ]
+                #delta_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] - below_right[x] for x in range(3) ]
+                
+                new_centroid = [ contour_model['centroid'][x] + delta_centroid[x] for x in range(3) ] 
+                #new_left = [ contour_model['coords'][0][x] + delta_left[x] for x in range(3) ] 
+                #new_right = [ contour_model['coords'][int(contour_model['contour_length']/2)][x] + delta_right[x] for x in range(3) ]
+    
+                #print( below_centroid, below_left, below_right )
+                #print( contour_model['centroid'], contour_model['coords'][0], contour_model['coords'][int(contour_model['contour_length']/2)] )
+                #print( delta_centroid, delta_left, delta_right )
+                #print( new_centroid, new_left, new_right )
+    
+                v_centroid = bm.verts.new(new_centroid)
+                #v_left = bm.verts.new(new_left) 
+                #v_right =  bm.verts.new(new_right) 
+                #contour_model['e'].append( bm.edges.new( ( v_left, v_centroid ) ) )
+                #contour_model['e'].append( bm.edges.new( ( v_right, v_centroid ) ) )
+                for i in range( contour_model['contour_length'] ):
+                    face1 = bm.faces.new( ( contour_model['v'][i], contour_model['v'][(i+1)%contour_model['contour_length']], v_centroid ) )
                         
 
 # create faces
@@ -1747,7 +1868,7 @@ for contour_pair in contour_pair_list:
             idx2 = quarter_length * 3
             idx3 = quarter_length * 2
             idx4 = 0
-            print( idx1, idx2, idx3, idx4 )
+            #print( idx1, idx2, idx3, idx4 )
             face1 = bm.faces.new( ( contour1['v'][idx1], contour1['v'][idx2], above1['v'][idx3] ) )
             face1 = bm.faces.new( ( contour1['v'][idx2], contour1['v'][idx1], above2['v'][0] ) )
         contour1['branching_processed'] = True
