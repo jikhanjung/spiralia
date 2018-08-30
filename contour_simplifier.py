@@ -4,6 +4,7 @@ import cv2
 
 
 SCALE_FACTOR = 100.0
+CONTOUR_POINT_COUNT = 16
 ret_str = ""
 
 coord_correction = []
@@ -40,7 +41,7 @@ for i in range(18):
         idx = 0
         max_idx = -1
         min_idx = -1
-        num_point = 16
+        num_point = CONTOUR_POINT_COUNT
         idx_list = []
         for pt in c:
             if pt[0][0] > max_x[0]:
@@ -722,7 +723,7 @@ for contours_in_a_section in all_contour_model:
         
         #print( contour1['index'], contour2['index'] )
 
-def get_distance( coord1, coord2 ):
+def get_distance( coord1, coord2 = [0,0,0]):
     x_diff = coord1[0] - coord2[0]
     y_diff = coord1[1] - coord2[1]
     z_diff = coord1[2] - coord2[2]
@@ -996,48 +997,172 @@ for contour_pair in contour_pair_list:
             face1 = bm.faces.new( ( contour2['v'][idx2], contour2['v'][idx1], below2['v'][0] ) )
         contour2['branching_processed'] = True
 
+CONTOUR_LENGTH = 106 / SCALE_FACTOR
+CONTOUR_WIDTH = 16 / SCALE_FACTOR
+CONTOUR_POINT_COUNT = 16
+
 toppair_list = [ [ [18,0],[18,1] ], [ [12,42], [10,44] ] ]
 # create imaginary spiral based on cross-section
+def cross(a, b):
+    c = [a[1]*b[2] - a[2]*b[1],
+         a[2]*b[0] - a[0]*b[2],
+         a[0]*b[1] - a[1]*b[0]]
 
+    return c
+    
 for toppair in toppair_list:
     contour1 = all_contour_model[toppair[0][0]-1][toppair[0][1]]
-    contour2 = all_contour_model[toppair[0][0]-1][toppair[1][1]]
+    contour2 = all_contour_model[toppair[1][0]-1][toppair[1][1]]
     print("toppair", contour1['index'], contour2['index'])
+    num_point = contour1['contour_length']
     
     below_centroid = [0,0,0]
     below1 = contour1['below'][0]
     below2 = contour2['below'][0]
     for i in range(3):
         below_centroid[i] = ( below1['centroid'][i] + below2['centroid'][i] ) / 2
-    print("below:", below1['index'], below2['index'])
+    #print("below:", below1['index'], below2['index'])
     
     curr_centroid = [0,0,0]
     for i in range(3):
         curr_centroid[i] = ( contour1['centroid'][i] + contour2['centroid'][i] ) / 2
+        
+    left_to_right_vector = [0,0,0]
+    for i in range(3):
+        left_to_right_vector[i] = below2['centroid'][i] - below1['centroid'][i]
     
     left_dist = get_distance( contour1['centroid'], curr_centroid )
     right_dist = get_distance( contour2['centroid'], curr_centroid )
     mean_dist = ( left_dist + right_dist ) / 2
-    # print( "left, right, mean dist", left_dist, right_dist, mean_dist )
+    print( "left, right, mean dist", left_dist, right_dist, mean_dist )
     
     sin_theta = mean_dist / SPIRALIA_RADIUS
     theta = math.asin( sin_theta )
     z_diff = SPIRALIA_RADIUS - SPIRALIA_RADIUS * math.cos( theta )
-    #print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
+    print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
     
     delta_centroid = []
     for k in range(3):
-        delta_centroid.append( ( curr_centroid[k] - below_centroid[k] ) * (z_diff / (40.3/SCALE_FACTOR)) )
+        delta_centroid.append( curr_centroid[k] - below_centroid[k] )
     
-    new_centroid = [ curr_centroid[x] + delta_centroid[x] for x in range(3) ] 
+    delta_length = get_distance( delta_centroid )
+    print( "delta", delta_centroid, delta_length )
+    unit_delta = [0,0,0]
+    for k in range(3):
+        unit_delta[k] = delta_centroid[k] / delta_length
+    
+    new_centroid = [ curr_centroid[x] + unit_delta[x] * delta_length for x in range(3) ]
+    outer = [  curr_centroid[x] + unit_delta[x] * delta_length + unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
+    inner = [  curr_centroid[x] + unit_delta[x] * delta_length - unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
     
     v_centroid = bm.verts.new(new_centroid)
-    for i in range( contour1['contour_length'] ):
-        face1 = bm.faces.new( ( contour1['v'][i], v_centroid, contour1['v'][(i+1)%contour1['contour_length']] ) )
-    for i in range( contour2['contour_length'] ):
-        face1 = bm.faces.new( ( contour2['v'][i], v_centroid, contour2['v'][(i+1)%contour1['contour_length']] ) )
+    #v_outer = bm.verts.new(outer)
+    #v_inner = bm.verts.new(inner)
+    #bm.edges.new( ( v_outer, v_centroid ) )
+    #bm.edges.new( ( v_inner, v_centroid ) )
+    
+    perpendicular_vector = cross( left_to_right_vector, unit_delta )
+    perpendicular_length = get_distance( perpendicular_vector )
+    unit_perpendicular = [0,0,0]
+    for k in range(3):
+        unit_perpendicular[k] = perpendicular_vector[k] / perpendicular_length
+    
+    v_list = []
+    for i in range( CONTOUR_POINT_COUNT ):
+        rotation_in_radian = ( math.pi * 2 / CONTOUR_POINT_COUNT )
+        radius_displacement= math.cos( rotation_in_radian * i ) * (CONTOUR_LENGTH / 4)
+        perpendicular_displacement = math.sin( rotation_in_radian * i ) * (CONTOUR_WIDTH / 4)
+        new_vert = [0,0,0]
+        for j in range(3):
+            new_vert[j] = new_centroid[j] + unit_delta[j] * radius_displacement + unit_perpendicular[j] * perpendicular_displacement 
 
-     
+        v_list.append( bm.verts.new(new_vert) )
+    for i in range( len( v_list ) ):
+        bm.edges.new( ( v_list[i], v_list[(i+1)%CONTOUR_POINT_COUNT] ) )
+        
+    for i in range( contour1['contour_length'] ):
+        face1 = bm.faces.new( ( contour1['v'][(i+1)%CONTOUR_POINT_COUNT], contour1['v'][i], v_list[i], v_list[(i+1)%CONTOUR_POINT_COUNT] ) )
+    for i in range( contour2['contour_length'] ):
+        face1 = bm.faces.new( ( contour2['v'][(i+1)%CONTOUR_POINT_COUNT], contour2['v'][i], v_list[(int(CONTOUR_POINT_COUNT/2)+CONTOUR_POINT_COUNT-i)%CONTOUR_POINT_COUNT], v_list[(int(CONTOUR_POINT_COUNT/2)+CONTOUR_POINT_COUNT-i-1)%CONTOUR_POINT_COUNT] ) )
+
+bottompair_list = [ [[2,4],[2,7]], [[2,6],[3,20]],[[3,16],[3,22]],[[3,17],[4,30]],[[4,26],[6,42]],[[3,19],[3,21]],[[4,21],[4,28]] ]
+
+for bottompair in bottompair_list:
+    contour1 = all_contour_model[bottompair[0][0]-1][bottompair[0][1]]
+    contour2 = all_contour_model[bottompair[1][0]-1][bottompair[1][1]]
+    print("bottompair", contour1['index'], contour2['index'])
+    num_point = contour1['contour_length']
+    
+    above_centroid = [0,0,0]
+    above1 = contour1['above'][0]
+    above2 = contour2['above'][0]
+    for i in range(3):
+        above_centroid[i] = ( above1['centroid'][i] + above2['centroid'][i] ) / 2
+    #print("above:", above1['index'], above2['index'])
+    
+    curr_centroid = [0,0,0]
+    for i in range(3):
+        curr_centroid[i] = ( contour1['centroid'][i] + contour2['centroid'][i] ) / 2
+        
+    left_to_right_vector = [0,0,0]
+    for i in range(3):
+        left_to_right_vector[i] = above2['centroid'][i] - above1['centroid'][i]
+    
+    left_dist = get_distance( contour1['centroid'], curr_centroid )
+    right_dist = get_distance( contour2['centroid'], curr_centroid )
+    mean_dist = ( left_dist + right_dist ) / 2
+    print( "left, right, mean dist", left_dist, right_dist, mean_dist )
+    
+    sin_theta = mean_dist / SPIRALIA_RADIUS
+    theta = math.asin( sin_theta )
+    z_diff = SPIRALIA_RADIUS - SPIRALIA_RADIUS * math.cos( theta )
+    print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
+    
+    delta_centroid = []
+    for k in range(3):
+        delta_centroid.append( curr_centroid[k] - above_centroid[k] )
+    
+    delta_length = get_distance( delta_centroid )
+    print( "delta", delta_centroid, delta_length )
+    unit_delta = [0,0,0]
+    for k in range(3):
+        unit_delta[k] = delta_centroid[k] / delta_length
+    
+    new_centroid = [ curr_centroid[x] + unit_delta[x] * delta_length for x in range(3) ]
+    outer = [  curr_centroid[x] + unit_delta[x] * delta_length + unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
+    inner = [  curr_centroid[x] + unit_delta[x] * delta_length - unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
+    
+    v_centroid = bm.verts.new(new_centroid)
+    #v_outer = bm.verts.new(outer)
+    #v_inner = bm.verts.new(inner)
+    #bm.edges.new( ( v_outer, v_centroid ) )
+    #bm.edges.new( ( v_inner, v_centroid ) )
+    
+    perpendicular_vector = cross( left_to_right_vector, unit_delta )
+    perpendicular_length = get_distance( perpendicular_vector )
+    unit_perpendicular = [0,0,0]
+    for k in range(3):
+        unit_perpendicular[k] = perpendicular_vector[k] / perpendicular_length
+    
+    v_list = []
+    for i in range( CONTOUR_POINT_COUNT ):
+        rotation_in_radian = ( math.pi * 2 / CONTOUR_POINT_COUNT )
+        radius_displacement= math.cos( rotation_in_radian * i ) * (CONTOUR_LENGTH / 4)
+        perpendicular_displacement = math.sin( rotation_in_radian * i ) * (CONTOUR_WIDTH / 4)
+        new_vert = [0,0,0]
+        for j in range(3):
+            new_vert[j] = new_centroid[j] + unit_delta[j] * radius_displacement + unit_perpendicular[j] * perpendicular_displacement 
+
+        v_list.append( bm.verts.new(new_vert) )
+    for i in range( len( v_list ) ):
+        bm.edges.new( ( v_list[i], v_list[(i+1)%CONTOUR_POINT_COUNT] ) )
+        
+    for i in range( contour1['contour_length'] ):
+        face1 = bm.faces.new( ( contour1['v'][i], contour1['v'][(i+1)%CONTOUR_POINT_COUNT], v_list[(CONTOUR_POINT_COUNT-i-1)%CONTOUR_POINT_COUNT], v_list[(+CONTOUR_POINT_COUNT-i)%CONTOUR_POINT_COUNT] ) )
+    for i in range( contour2['contour_length'] ):
+        face1 = bm.faces.new( ( contour2['v'][i], contour2['v'][(i+1)%CONTOUR_POINT_COUNT], v_list[(int(CONTOUR_POINT_COUNT/2)+i+1)%CONTOUR_POINT_COUNT], v_list[(int(CONTOUR_POINT_COUNT/2)+i)%CONTOUR_POINT_COUNT] ) )
+
+
 # make the bmesh the object's mesh
 bm.to_mesh(mesh)  
 
