@@ -19,6 +19,7 @@ num_point = 8
 all_contours = []
 all_contours = []
 all_centroids = []
+SCALE_FACTOR = 100
 
 for i in range(7):
     num = '0' + str(i+1)
@@ -71,7 +72,7 @@ for i in range(7):
         cy = int(M['m01'] / M['m00'])
         cv2.putText(im,str(j) ,(cx,cy),cv2.FONT_HERSHEY_COMPLEX_SMALL,1,255)
 
-        centroids_in_a_section.append( [ cx+x_correction, cy+y_correction, (i-9)*40.3 ] )
+        centroids_in_a_section.append( [ cx+x_correction, -1 * (cy+y_correction ), (i-9)*40.3 ] )
         verts = []
         for v in simp_cont:
             verts.append( "(" + ",".join( [ str( coord ) for coord in v ] ) + ")" )
@@ -90,7 +91,7 @@ for contours_in_a_section in all_contours:
         v_str_list = []
         for v in contour:
             #print("v:",v)
-            v_str = "(" + ",".join( [str(x/1000.0) for x in v]) + ")"
+            v_str = "(" + ",".join( [str(x/SCALE_FACTOR) for x in v]) + ")"
             v_str_list.append( v_str )
         contour_str = "[" + ",".join( v_str_list ) + "]"
         #print( "contour_str:", contour_str )
@@ -107,7 +108,7 @@ for centroids_in_a_section in all_centroids:
     centroids_str_list = []
     centroids_in_a_section_str = ""
     for centroid in centroids_in_a_section:
-        centroid_str = "(" + ",".join( [ str(x/1000.0) for x in centroid ] )+")"
+        centroid_str = "(" + ",".join( [ str(x/SCALE_FACTOR) for x in centroid ] )+")"
         print( centroid_str )
         centroids_str_list.append( centroid_str )
     centroids_in_a_section_str = "[" + ",\n".join( centroids_str_list ) + "]"
@@ -163,9 +164,10 @@ for contour_model_in_a_section in all_contour_model:
         contour_model_in_a_section[1] = contour1
 
 # close top and bottom
-for contour_model_in_a_section in all_contour_model:
-    face1 = bm.faces.new( tuple( contour_model_in_a_section[0]['v'] ) )
-    face1 = bm.faces.new( tuple( reversed( contour_model_in_a_section[1]['v'] ) ) )
+face1 = bm.faces.new( tuple( all_contour_model[0][0]['v'] ) )
+face1 = bm.faces.new( tuple( all_contour_model[0][1]['v'] ) )
+face1 = bm.faces.new( tuple( reversed( all_contour_model[-1][0]['v'] ) ) )
+face1 = bm.faces.new( tuple( reversed( all_contour_model[-1][1]['v'] ) ) )
 
 # create faces
 for i in range( len( all_contour_model ) - 1 ): 
@@ -182,7 +184,7 @@ for i in range( len( all_contour_model ) - 1 ):
             idx1 = k 
             idx2 = ( idx1 + 1 ) % len( contour1['v'] )
             print( i, j, idx1, idx2 )
-            face1 = bm.faces.new( ( contour1['v'][idx1], contour1['v'][idx2], contour2['v'][idx2], contour2['v'][idx1] ) )
+            face1 = bm.faces.new( ( contour1['v'][idx2], contour1['v'][idx1], contour2['v'][idx1], contour2['v'][idx2] ) )
         # make the bmesh the object's mesh
         bm.to_mesh(mesh)  
         #time.sleep(2)

@@ -15,6 +15,7 @@ coord_correction[7][1] += 5
 coord_correction[8][1] += 10
 coord_correction[9][1] += 0
 num_point = 100
+SCALE_FACTOR = 100.0
 
 end_point_list = [[[[ 40, 949],[1959, 977]],[[109,1056],[1956, 974]]],
 [[[ 28, 948],[1942,1015]],[[ 73,1063],[1951,1019]]],
@@ -95,7 +96,7 @@ for i in range(18):
             x = ( cx + x_correction )
             y = ( cy + y_correction )
             z = ( (i-9)*40.3 )
-            new_contour.append( [ x, y, z ] )
+            new_contour.append( [ x, y * -1 , z ] )
             cv2.putText(im, str(idx), (cx, cy), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, 255)
         contours_in_a_section.append( new_contour )
         M = cv2.moments(c)
@@ -116,7 +117,7 @@ for contours_in_a_section in all_contours:
         v_str_list = []
         for v in contour:
             #print("v:",v)
-            v_str = "(" + ",".join( [str(x/1000.0) for x in v]) + ")"
+            v_str = "(" + ",".join( [str(x/SCALE_FACTOR) for x in v]) + ")"
             v_str_list.append( v_str )
         contour_str = "[" + ",".join( v_str_list ) + "]"
         #print( "contour_str:", contour_str )
@@ -168,9 +169,10 @@ for contours_in_a_section in contour_list:
 
 
 # close top and bottom
-for contour_model_in_a_section in all_contour_model:
-    face1 = bm.faces.new( tuple( contour_model_in_a_section[0]['v'] ) )
-    face1 = bm.faces.new( tuple( reversed( contour_model_in_a_section[1]['v'] ) ) )
+face1 = bm.faces.new( tuple( reversed( all_contour_model[0][0]['v'] ) ) )
+face1 = bm.faces.new( tuple( reversed( all_contour_model[0][1]['v'] ) ) )
+face1 = bm.faces.new( tuple( all_contour_model[-1][0]['v'] ) )
+face1 = bm.faces.new( tuple( all_contour_model[-1][1]['v'] ) )
 
 # create faces
 for i in range( len( all_contour_model ) - 1 ): 
