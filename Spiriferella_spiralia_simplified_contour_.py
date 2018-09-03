@@ -1946,7 +1946,7 @@ def cross(a, b):
 for toppair in toppair_list:
     contour1 = all_contour_model[toppair[0][0]-1][toppair[0][1]]
     contour2 = all_contour_model[toppair[1][0]-1][toppair[1][1]]
-    print("toppair", contour1['index'], contour2['index'])
+    #print("toppair", contour1['index'], contour2['index'])
     num_point = contour1['contour_length']
     
     below_centroid = [0,0,0]
@@ -1967,24 +1967,24 @@ for toppair in toppair_list:
     left_dist = get_distance( contour1['centroid'], curr_centroid )
     right_dist = get_distance( contour2['centroid'], curr_centroid )
     mean_dist = ( left_dist + right_dist ) / 2
-    print( "left, right, mean dist", left_dist, right_dist, mean_dist )
+    #print( "left, right, mean dist", left_dist, right_dist, mean_dist )
     
     sin_theta = mean_dist / SPIRALIA_RADIUS
     theta = math.asin( sin_theta )
     z_diff = SPIRALIA_RADIUS - SPIRALIA_RADIUS * math.cos( theta )
-    print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
+    #print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
     
     delta_centroid = []
     for k in range(3):
         delta_centroid.append( curr_centroid[k] - below_centroid[k] )
     
     delta_length = get_distance( delta_centroid )
-    print( "delta", delta_centroid, delta_length )
+    #print( "delta", delta_centroid, delta_length )
     unit_delta = [0,0,0]
     for k in range(3):
         unit_delta[k] = delta_centroid[k] / delta_length
     
-    new_centroid = [ curr_centroid[x] + unit_delta[x] * delta_length for x in range(3) ]
+    new_centroid = [ curr_centroid[x] + unit_delta[x] * z_diff for x in range(3) ]
     outer = [  curr_centroid[x] + unit_delta[x] * delta_length + unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
     inner = [  curr_centroid[x] + unit_delta[x] * delta_length - unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
     
@@ -2044,12 +2044,13 @@ for bottompair in bottompair_list:
     left_dist = get_distance( contour1['centroid'], curr_centroid )
     right_dist = get_distance( contour2['centroid'], curr_centroid )
     mean_dist = ( left_dist + right_dist ) / 2
-    print( "left, right, mean dist", left_dist, right_dist, mean_dist )
+    print( "radius, left, right, mean dist", SPIRALIA_RADIUS, left_dist, right_dist, mean_dist )
     
     sin_theta = mean_dist / SPIRALIA_RADIUS
     theta = math.asin( sin_theta )
     z_diff = SPIRALIA_RADIUS - SPIRALIA_RADIUS * math.cos( theta )
-    print( "sin theta, theta, z_diff", sin_theta, theta, z_diff )
+    print( "RADIUS, RADIUS * cos(theta)", SPIRALIA_RADIUS,SPIRALIA_RADIUS * math.cos( theta )) 
+    print( "sin theta, theta, theta in degree, cos(theta), z_diff", sin_theta, theta, math.degrees( theta ), math.cos(theta), z_diff )
     
     delta_centroid = []
     for k in range(3):
@@ -2061,7 +2062,7 @@ for bottompair in bottompair_list:
     for k in range(3):
         unit_delta[k] = delta_centroid[k] / delta_length
     
-    new_centroid = [ curr_centroid[x] + unit_delta[x] * delta_length for x in range(3) ]
+    new_centroid = [ curr_centroid[x] + unit_delta[x] * z_diff for x in range(3) ]
     outer = [  curr_centroid[x] + unit_delta[x] * delta_length + unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
     inner = [  curr_centroid[x] + unit_delta[x] * delta_length - unit_delta[x] * ( CONTOUR_LENGTH / 4 ) for x in range(3) ] 
     
